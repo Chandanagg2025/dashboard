@@ -3,7 +3,7 @@
  * Handles: auth guard, complaint list/detail, raise form, assign, service report, PDF download
  */
 
-const API  = 'http://localhost:3001';
+const API  = (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') ? '' : 'http://localhost:3001';
 let user   = null;
 let view   = 'list';           // 'list' | 'detail'
 let activeComplaintId = null;

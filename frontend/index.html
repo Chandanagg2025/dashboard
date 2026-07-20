@@ -211,7 +211,8 @@
   <script>
     (async () => {
       try {
-        const r = await fetch('http://localhost:3001/api/auth/me', { credentials: 'include' });
+        const apiBase = (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') ? '' : 'http://localhost:3001';
+        const r = await fetch(`${apiBase}/api/auth/me`, { credentials: 'include' });
         const j = await r.json();
         if (!j.success) { window.location.href = 'login.html'; }
         else {
@@ -235,7 +236,10 @@
       } catch (_) { /* backend might be starting, don't redirect */ }
     })();
     async function doLogout() {
-      try { await fetch('http://localhost:3001/api/auth/logout', { method: 'POST', credentials: 'include' }); } catch (_) { }
+      try {
+        const apiBase = (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') ? '' : 'http://localhost:3001';
+        await fetch(`${apiBase}/api/auth/logout`, { method: 'POST', credentials: 'include' });
+      } catch (_) { }
       sessionStorage.removeItem('ocems_user');
       window.location.href = 'login.html';
     }

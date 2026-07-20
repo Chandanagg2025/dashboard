@@ -211,7 +211,8 @@ async function liveAlertTick() {
 /* ── Init ──────────────────────────────────────────────────────────────── */
 window.addEventListener('DOMContentLoaded', async () => {
   try {
-    const userRes = await fetch('http://localhost:3001/api/auth/me', { credentials: 'include' });
+    const apiBase = (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') ? '' : 'http://localhost:3001';
+    const userRes = await fetch(`${apiBase}/api/auth/me`, { credentials: 'include' });
     const userJson = await userRes.json();
     if (userJson.success) {
       setState({ USER: userJson.data });

@@ -1,0 +1,20 @@
+{
+  "name": "ocems-dashboard",
+  "version": "1.0.0",
+  "description": "OCEMS Dashboard — Full Stack Application",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node --watch backend/server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "pdfkit": "^0.15.0",
+    "sql.js": "^1.12.0"
+  }
+}

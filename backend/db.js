@@ -49,10 +49,14 @@ async function initDb() {
 }
 
 function save(db) {
-  const data   = db.export();
-  const buffer = Buffer.from(data);
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  fs.writeFileSync(DB_PATH, buffer);
+  try {
+    const data   = db.export();
+    const buffer = Buffer.from(data);
+    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+    fs.writeFileSync(DB_PATH, buffer);
+  } catch (err) {
+    console.warn('  ⚠️ Note: Could not write database to disk (Vercel read-only environment):', err.message);
+  }
 }
 
 /* ─────────────────────────── OCEMS DATA GENERATION ───────────────────── */

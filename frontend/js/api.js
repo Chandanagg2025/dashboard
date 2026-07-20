@@ -3,7 +3,7 @@
  * All functions return the data array/object directly and throw on error.
  */
 
-const API_BASE = window.API_BASE || 'http://localhost:3001';
+const API_BASE = (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') ? '' : (window.API_BASE || 'http://localhost:3001');
 
 async function apiFetch(path) {
   const res  = await fetch(`${API_BASE}${path}`, { credentials: 'include' });
