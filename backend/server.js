@@ -44,6 +44,19 @@ app.use(cookieParser());
 /* ── DB reference ───────────────────────────────────────────────────────── */
 let db = null;
 
+// Ensure DB is initialized for serverless invocations
+app.use(async (req, res, next) => {
+  if (!db) {
+    try {
+      db = await initDb();
+    } catch (err) {
+      console.error('Database initialization error:', err);
+      return res.status(500).json({ success: false, error: 'Database failed to initialize: ' + err.message });
+    }
+  }
+  next();
+});
+
 function q(sql, params = []) { return toRows(db.exec(sql, params)); }
 function run(sql, params = []) { db.run(sql, params); }
 

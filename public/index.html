@@ -210,30 +210,41 @@
   <!-- Auth guard -->
   <script>
     (async () => {
+      let u = null;
       try {
         const apiBase = (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') ? '' : 'http://localhost:3001';
         const r = await fetch(`${apiBase}/api/auth/me`, { credentials: 'include' });
         const j = await r.json();
-        if (!j.success) { window.location.href = 'login.html'; }
-        else {
-          const u = j.data;
-          if (u.role === 'industry') {
-            window.location.href = 'complaints.html';
-            return;
-          }
-          document.title = `OCEMS Dashboard — ${u.name}`;
-          const ROLE_ICONS = { admin: '🛡️', engineer: '🔧', industry: '🏭' };
-          const sbUser = document.getElementById('sbUser');
-          const av = document.getElementById('suAvatar');
-          if (sbUser && av) {
-            av.textContent = ROLE_ICONS[u.role] || '👤';
-            av.className = `su-avatar ${u.role}`;
-            document.getElementById('suName').textContent = u.name;
-            document.getElementById('suRole').textContent = u.role.charAt(0).toUpperCase() + u.role.slice(1);
-            sbUser.style.display = 'flex';
-          }
-        }
-      } catch (_) { /* backend might be starting, don't redirect */ }
+        if (j.success) u = j.data;
+      } catch (_) {}
+
+      if (!u) {
+        try {
+          const stored = sessionStorage.getItem('ocems_user');
+          if (stored) u = JSON.parse(stored);
+        } catch (_) {}
+      }
+
+      if (!u) {
+        window.location.href = 'login.html';
+        return;
+      }
+
+      if (u.role === 'industry') {
+        window.location.href = 'complaints.html';
+        return;
+      }
+      document.title = `OCEMS Dashboard — ${u.name}`;
+      const ROLE_ICONS = { admin: '🛡️', engineer: '🔧', industry: '🏭' };
+      const sbUser = document.getElementById('sbUser');
+      const av = document.getElementById('suAvatar');
+      if (sbUser && av) {
+        av.textContent = ROLE_ICONS[u.role] || '👤';
+        av.className = `su-avatar ${u.role}`;
+        document.getElementById('suName').textContent = u.name;
+        document.getElementById('suRole').textContent = u.role.charAt(0).toUpperCase() + u.role.slice(1);
+        sbUser.style.display = 'flex';
+      }
     })();
     async function doLogout() {
       try {

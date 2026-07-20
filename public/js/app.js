@@ -210,15 +210,25 @@ async function liveAlertTick() {
 
 /* ── Init ──────────────────────────────────────────────────────────────── */
 window.addEventListener('DOMContentLoaded', async () => {
+  let currentUser = null;
   try {
     const apiBase = (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') ? '' : 'http://localhost:3001';
     const userRes = await fetch(`${apiBase}/api/auth/me`, { credentials: 'include' });
     const userJson = await userRes.json();
-    if (userJson.success) {
-      setState({ USER: userJson.data });
-      window._ocemsUser = userJson.data;
-    }
+    if (userJson.success) currentUser = userJson.data;
   } catch(_) {}
+
+  if (!currentUser) {
+    try {
+      const stored = sessionStorage.getItem('ocems_user');
+      if (stored) currentUser = JSON.parse(stored);
+    } catch (_) {}
+  }
+
+  if (currentUser) {
+    setState({ USER: currentUser });
+    window._ocemsUser = currentUser;
+  }
 
   buildNav();
   render();
