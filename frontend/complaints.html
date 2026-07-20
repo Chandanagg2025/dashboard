@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SHREE PRATHAM — Complaint Management | OCEMS</title>
+  <meta name="description" content="Complaint management and service report portal for OCEMS platform.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/complaints.css">
+</head>
+<body>
+  <div class="overlay" id="overlay" onclick="closeSidebar()"></div>
+
+  <div class="app">
+    <!-- Sidebar -->
+    <nav class="sidebar" id="sidebar">
+      <div class="sb-brand">
+        <div class="sb-logo"><img src="assets/logo.png" alt="Shree Pratham Logo" class="sb-logo-img"></div>
+        <div>
+          <div class="bt">SHREE PRATHAM</div>
+          <div class="bs">AirWatch OCEMS</div>
+        </div>
+      </div>
+      <div class="sb-user" id="sbUser">
+        <div class="su-avatar" id="suAvatar">?</div>
+        <div>
+          <div class="su-name" id="suName">Loading…</div>
+          <div class="su-role" id="suRole">—</div>
+        </div>
+      </div>
+      <nav class="sb-nav" id="sbNav"></nav>
+      <div class="sb-foot">
+        <button class="btn-logout" onclick="logout()">🚪 Sign Out</button>
+      </div>
+    </nav>
+
+    <!-- Main -->
+    <div class="main">
+      <header class="topbar">
+        <div class="tb-l">
+          <button class="ham" onclick="openSidebar()">☰</button>
+          <div>
+            <div class="tb-title" id="tbTitle">Complaints</div>
+            <div class="tb-sub" id="tbSub">Loading…</div>
+          </div>
+        </div>
+        <div class="tb-r">
+          <button class="btn btn-g btn-sm" id="btnDashNav" onclick="navigate('home')">📊 Dashboard</button>
+        </div>
+      </header>
+      <main class="content" id="content">
+        <div class="loading-state"><div class="spinner"></div><span>Loading…</span></div>
+      </main>
+    </div>
+  </div>
+
+  <div class="toast-wrap" id="toasts"></div>
+
+  <!-- Raise Complaint Modal -->
+  <div class="modal-bg" id="raiseModal">
+    <div class="modal">
+      <div class="modal-h">
+        <h3>📝 Raise New Complaint</h3>
+        <span class="modal-close" onclick="closeModal('raiseModal')">✕</span>
+      </div>
+      <div class="modal-b">
+        <form id="raiseForm" onsubmit="submitComplaint(event)" novalidate>
+          <div class="form-grid">
+            <div class="form-group full">
+              <label for="cTitle">Complaint Title *</label>
+              <input type="text" id="cTitle" placeholder="Brief description of the issue" required>
+            </div>
+            <div class="form-group">
+              <label for="cPriority">Priority</label>
+              <select id="cPriority">
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Site</label>
+              <input type="text" id="cSiteDisplay" readonly style="opacity:.6">
+            </div>
+            <div class="form-group full">
+              <label for="cDesc">Detailed Description *</label>
+              <textarea id="cDesc" rows="5" placeholder="Describe the problem in detail — what is happening, when it started, what was tried…" required></textarea>
+            </div>
+          </div>
+          <div style="margin-top:8px">
+            <div class="error-box" id="raiseError" style="display:none;margin-bottom:12px"></div>
+            <button type="submit" class="btn btn-p" id="raiseBtnSubmit">📤 Submit Complaint</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Assign Engineer Modal (Admin) -->
+  <div class="modal-bg" id="assignModal">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-h">
+        <h3>👷 Assign Engineer</h3>
+        <span class="modal-close" onclick="closeModal('assignModal')">✕</span>
+      </div>
+      <div class="modal-b">
+        <div class="form-group" style="margin-bottom:16px">
+          <label for="assignSelect">Select Service Engineer</label>
+          <select id="assignSelect"></select>
+        </div>
+        <div class="form-group" style="margin-bottom:16px">
+          <label for="assignNote">Note (optional)</label>
+          <input type="text" id="assignNote" placeholder="Any instructions for the engineer">
+        </div>
+        <button class="btn btn-p" onclick="confirmAssign()">✅ Assign & Notify</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Service Report Modal (Engineer) -->
+  <div class="modal-bg" id="reportModal">
+    <div class="modal" style="max-width:680px">
+      <div class="modal-h">
+        <h3>📋 Service Report</h3>
+        <span class="modal-close" onclick="closeModal('reportModal')">✕</span>
+      </div>
+      <div class="modal-b">
+        <form id="reportForm" novalidate>
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="rVisitDate">Visit Date *</label>
+              <input type="date" id="rVisitDate" required>
+            </div>
+            <div class="form-group">
+              <label for="rArrival">Arrival Time</label>
+              <input type="time" id="rArrival">
+            </div>
+            <div class="form-group">
+              <label for="rDeparture">Departure Time</label>
+              <input type="time" id="rDeparture">
+            </div>
+            <div class="form-group">
+              <label for="rNextVisit">Next Visit Date</label>
+              <input type="date" id="rNextVisit">
+            </div>
+            <div class="form-group full">
+              <label for="rProblem">Problem Found *</label>
+              <textarea id="rProblem" rows="3" placeholder="Describe the root cause and findings on site…" required></textarea>
+            </div>
+            <div class="form-group full">
+              <label for="rAction">Action Taken *</label>
+              <textarea id="rAction" rows="4" placeholder="Step-by-step actions performed to resolve the issue…" required></textarea>
+            </div>
+            <div class="form-group full">
+              <label for="rParts">Parts Replaced / Materials Used</label>
+              <textarea id="rParts" rows="2" placeholder="List any parts replaced or materials consumed…"></textarea>
+            </div>
+            <div class="form-group full">
+              <label for="rRecommend">Recommendations</label>
+              <textarea id="rRecommend" rows="2" placeholder="Preventive measures or future recommendations…"></textarea>
+            </div>
+            <div class="form-group full">
+              <label for="rRemarks">Engineer Remarks</label>
+              <textarea id="rRemarks" rows="2" placeholder="Any additional remarks…"></textarea>
+            </div>
+            <div class="form-group">
+              <label for="rClientName">Client Representative Name</label>
+              <input type="text" id="rClientName" placeholder="Name of client who acknowledged">
+            </div>
+            <div class="form-group">
+              <label for="rClientDesig">Client Designation</label>
+              <input type="text" id="rClientDesig" placeholder="e.g. Plant Manager">
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-f">
+        <div class="error-box" id="reportError" style="display:none;flex:1;margin:0"></div>
+        <button class="btn btn-g" onclick="saveReport(false)">💾 Save Draft</button>
+        <button class="btn btn-p" onclick="saveReport(true)">✅ Submit & Resolve</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/complaints.js"></script>
+</body>
+</html>

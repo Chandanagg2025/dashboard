@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SHREE PRATHAM — Login | OCEMS Platform</title>
+  <meta name="description" content="Secure login for OCEMS Platform — Admin, Industry and Service Engineer access.">
+  <link rel="stylesheet" href="css/auth.css">
+</head>
+
+<body>
+  <div class="orb orb1"></div>
+  <div class="orb orb2"></div>
+  <div class="orb orb3"></div>
+
+  <div class="login-wrap">
+    <div class="login-card">
+
+      <!-- Header -->
+      <div class="login-header">
+        <div class="login-logo"><img src="assets/logo.png" alt="Shree Pratham AirWatch Logo" class="brand-logo-img">
+        </div>
+        <div class="login-brand">SHREE PRATHAM</div>
+        <div class="login-tagline">OCEMS Platform</div>
+      </div>
+
+      <!-- Role Tabs -->
+      <div class="role-tabs" role="tablist" aria-label="Select role">
+        <button class="role-tab active" data-role="admin" id="tab-admin" role="tab" aria-selected="true"
+          aria-controls="form-panel" onclick="switchTab('admin')">
+          <span class="tab-icon">🛡️</span>
+          <span class="tab-label">Admin</span>
+        </button>
+        <button class="role-tab" data-role="engineer" id="tab-engineer" role="tab" aria-selected="false"
+          onclick="switchTab('engineer')">
+          <span class="tab-icon">🔧</span>
+          <span class="tab-label">Engineer</span>
+        </button>
+        <button class="role-tab" data-role="industry" id="tab-industry" role="tab" aria-selected="false"
+          onclick="switchTab('industry')">
+          <span class="tab-icon">🏭</span>
+          <span class="tab-label">Industry</span>
+        </button>
+      </div>
+
+      <!-- Form -->
+      <form class="login-form" id="loginForm" onsubmit="doLogin(event)" novalidate>
+        <div class="role-hint" id="roleHint">
+          <span class="rh-icon">🛡️</span>
+          <span id="roleHintText">Administrator — full platform access, user management & complaint oversight.</span>
+        </div>
+
+        <div class="login-error" id="loginError">
+          <span>⚠️</span><span id="loginErrorMsg">Invalid credentials. Please try again.</span>
+        </div>
+
+        <div class="form-group">
+          <label for="emailInput">Email Address</label>
+          <input type="email" id="emailInput" name="email" placeholder="Enter your email" autocomplete="email" onfocus="this.select()" required>
+        </div>
+        <div class="form-group">
+          <label for="passwordInput">Password</label>
+          <input type="password" id="passwordInput" name="password" placeholder="Enter your password"
+            autocomplete="current-password" onfocus="this.select()" required>
+        </div>
+
+        <button type="submit" class="btn-login" id="loginBtn">
+          <span id="loginBtnText">Sign In</span>
+        </button>
+      </form>
+
+      <!-- Demo credentials -->
+      <div class="demo-creds" id="demoCreds">
+        <div class="dc-title">🔑 Demo Credentials</div>
+        <div id="demoCredText">
+          <code>admin@ocems.in</code> · Password: <code>demo1234</code>
+        </div>
+      </div>
+
+      <div class="login-footer">
+        SHREE PRATHAM Environmental Monitoring &copy; 2026<br>
+        OCEMS Compliance Platform · Powered by AirWatch
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = 'http://localhost:3001';
+
+    const ROLES = {
+      admin: {
+        icon: '🛡️',
+        hint: 'Administrator — full platform access, user management & complaint oversight.',
+        email: 'admin@ocems.in',
+        cred: '<code>admin@ocems.in</code> · Password: <code>demo1234</code>',
+        redirect: 'index.html'
+      },
+      engineer: {
+        icon: '🔧',
+        hint: 'Service Engineer — view assigned complaints, file service reports & generate PDFs.',
+        email: 'engineer@ocems.in',
+        cred: '<code>engineer@ocems.in</code> · Password: <code>demo1234</code>',
+        redirect: 'complaints.html'
+      },
+      industry: {
+        icon: '🏭',
+        hint: 'Industry / Client — raise complaints, track resolution status & download service reports.',
+        email: 'industry@ocems.in',
+        cred: '<code>industry@ocems.in</code> · Password: <code>demo1234</code>',
+        redirect: 'complaints.html'
+      },
+    };
+
+    let currentRole = 'admin';
+
+    function switchTab(role) {
+      currentRole = role;
+      document.querySelectorAll('.role-tab').forEach(t => {
+        const isActive = t.dataset.role === role;
+        t.classList.toggle('active', isActive);
+        t.setAttribute('aria-selected', isActive);
+      });
+      const cfg = ROLES[role];
+      document.getElementById('roleHint').querySelector('.rh-icon').textContent = cfg.icon;
+      document.getElementById('roleHintText').textContent = cfg.hint;
+      document.getElementById('demoCredText').innerHTML = cfg.cred;
+      document.getElementById('emailInput').value = cfg.email;
+      document.getElementById('passwordInput').value = '';
+      document.getElementById('loginError').classList.remove('show');
+    }
+
+    async function doLogin(e) {
+      e.preventDefault();
+      let email = document.getElementById('emailInput').value.trim().toLowerCase();
+      // Auto-fix if user accidentally appends email over pre-filled input
+      const dupMatch = email.match(/^(.+?@.+?)\1$/);
+      if (dupMatch) email = dupMatch[1];
+
+      const password = document.getElementById('passwordInput').value;
+      const btn = document.getElementById('loginBtn');
+      const errEl = document.getElementById('loginError');
+      const errMsg = document.getElementById('loginErrorMsg');
+
+      errEl.classList.remove('show');
+      btn.disabled = true;
+      document.getElementById('loginBtnText').innerHTML = '<span class="spin">⟳</span> Signing in…';
+
+      try {
+        const res = await fetch(`${API}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json();
+
+        if (!data.success) {
+          errMsg.textContent = data.error || 'Invalid credentials.';
+          errEl.classList.add('show');
+          return;
+        }
+
+        // Store user info in sessionStorage for the frontend
+        sessionStorage.setItem('ocems_user', JSON.stringify(data.data));
+
+        // Role check — warn if mismatch
+        if (data.data.role !== currentRole) {
+          // Still redirect, role from server is authoritative
+        }
+
+        window.location.href = ROLES[data.data.role]?.redirect || 'index.html';
+
+      } catch (err) {
+        errMsg.textContent = 'Cannot connect to server. Ensure backend is running on port 3001.';
+        errEl.classList.add('show');
+      } finally {
+        btn.disabled = false;
+        document.getElementById('loginBtnText').textContent = 'Sign In';
+      }
+    }
+
+    // Auto-fill first tab on load
+    switchTab('admin');
+  </script>
+</body>
+
+</html>

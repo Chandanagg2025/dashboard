@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SHREE PRATHAM — Real-Time Pollution Monitoring Dashboard</title>
+  <meta name="description"
+    content="Live industrial emission and effluent monitoring across connected OCEMS sites. Track PM, SO₂, NOₓ, BOD, COD and more in real-time.">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
+
+  <!-- Third-party libs -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+  <!-- App styles -->
+  <style>
+    .auth-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid rgba(80, 105, 180, .25);
+      background: rgba(11, 19, 37, .85);
+      color: #7a8aaa;
+      font-family: inherit;
+      transition: all .15s
+    }
+
+    .auth-btn:hover {
+      border-color: rgba(124, 58, 237, .45);
+      color: #e2eaff
+    }
+
+    .auth-btn.logout {
+      border-color: rgba(239, 68, 68, .2);
+      color: #f87171
+    }
+
+    .auth-btn.logout:hover {
+      background: rgba(239, 68, 68, .08)
+    }
+  </style>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+  <div class="overlay" id="overlay" onclick="closeSb()"></div>
+
+  <div class="app" id="app">
+    <!-- ====== SIDEBAR ====== -->
+    <nav class="sidebar" id="sidebar">
+      <div class="sb-brand">
+        <div class="sb-logo"><img src="assets/logo.png" alt="Shree Pratham Logo" class="sb-logo-img"></div>
+        <div>
+          <div class="bt">SHREE PRATHAM</div>
+          <div class="bs">Real Time Data Monitoring Dashboard</div>
+        </div>
+      </div>
+      <div class="sb-chip">
+        <div class="live-dot"></div>
+        <span>Live · <b id="siteCountLbl">—</b> sites</span>
+      </div>
+      <div class="sb-user" id="sbUser" style="display:none">
+        <div class="su-avatar" id="suAvatar">👤</div>
+        <div>
+          <div class="su-name" id="suName">—</div>
+          <div class="su-role" id="suRole">—</div>
+        </div>
+      </div>
+      <nav class="sb-nav" id="sbNav"></nav>
+      <div class="sb-foot">
+        <div class="sb-foot-info">
+          <div class="live-dot"></div>
+          System online
+        </div>
+        <div class="tog" id="togBtn" onclick="toggleTheme()" title="Toggle light/dark"></div>
+      </div>
+    </nav>
+
+    <!-- ====== MAIN ====== -->
+    <div class="main">
+      <header class="topbar">
+        <div class="tb-l">
+          <button class="ham" onclick="openSb()">☰</button>
+          <div>
+            <div class="tb-title" id="tbTitle">Dashboard</div>
+            <div class="tb-sub" id="tbSub">All connected sites · live status</div>
+          </div>
+        </div>
+        <div class="tb-r">
+          <div class="clock" id="clock">—</div>
+          <div class="live-badge">
+            <div class="live-dot"></div>Live
+          </div>
+          <a href="complaints.html" class="auth-btn" title="Complaint Portal">📋 Complaints</a>
+          <button class="auth-btn logout" onclick="doLogout()" title="Sign out">🚪 Sign Out</button>
+          <div class="bell" onclick="navigate('alerts')" title="Alerts">
+            🔔<div class="bell-n" id="bellN">0</div>
+          </div>
+        </div>
+      </header>
+      <main class="content" id="content"></main>
+    </div>
+  </div>
+
+  <div class="toast-wrap" id="toasts"></div>
+
+  <!-- Add Industry Modal (Admin Only) -->
+  <div class="modal-bg" id="addSiteModal">
+    <div class="modal">
+      <div class="modal-h">
+        <h3>🏭 Add New Industry / OCEMS Site</h3>
+        <span class="modal-close" onclick="closeAddSiteModal()">✕</span>
+      </div>
+      <div class="modal-b">
+        <form id="addSiteForm" onsubmit="submitAddSite(event)" novalidate>
+          <div class="form-grid">
+            <div class="form-group full">
+              <label for="sName">Industry / Plant Name *</label>
+              <input type="text" id="sName" placeholder="e.g. Pune Cement Works" required>
+            </div>
+            <div class="form-group">
+              <label for="sSector">Sector *</label>
+              <select id="sSector" required>
+                <option value="Cement">Cement</option>
+                <option value="Thermal Power">Thermal Power</option>
+                <option value="Steel">Steel</option>
+                <option value="Textile">Textile</option>
+                <option value="Chemical">Chemical</option>
+                <option value="Pharmaceutical">Pharmaceutical</option>
+                <option value="Fertilizer">Fertilizer</option>
+                <option value="Pulp & Paper">Pulp & Paper</option>
+                <option value="Sugar">Sugar</option>
+                <option value="Distillery">Distillery</option>
+                <option value="Tannery">Tannery</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="sCategory">Monitoring Category *</label>
+              <select id="sCategory" required>
+                <option value="Stack">Stack Emissions</option>
+                <option value="ETP">ETP Effluent</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="sCity">City *</label>
+              <input type="text" id="sCity" placeholder="e.g. Pune" required>
+            </div>
+            <div class="form-group">
+              <label for="sState">State *</label>
+              <input type="text" id="sState" placeholder="e.g. Maharashtra" required>
+            </div>
+            <div class="form-group">
+              <label for="sSpcb">State PCB Board *</label>
+              <input type="text" id="sSpcb" placeholder="e.g. MPCB" required>
+            </div>
+            <div class="form-group">
+              <label for="sPhone">Contact Phone</label>
+              <input type="text" id="sPhone" placeholder="+91-9876543210">
+            </div>
+            <div class="form-group">
+              <label for="sStacks">Number of Stacks</label>
+              <input type="number" id="sStacks" value="1" min="0" max="10">
+            </div>
+            <div class="form-group">
+              <label for="sEtp">Number of ETP Units</label>
+              <input type="number" id="sEtp" value="0" min="0" max="10">
+            </div>
+            <div class="form-group">
+              <label for="sLat">Latitude (deg N)</label>
+              <input type="number" step="0.0001" id="sLat" value="19.0760">
+            </div>
+            <div class="form-group">
+              <label for="sLng">Longitude (deg E)</label>
+              <input type="number" step="0.0001" id="sLng" value="72.8777">
+            </div>
+            <div class="form-group full" style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
+              <div style="font-size:12px;font-weight:700;color:var(--purple-l);margin-bottom:8px">🔑 INDUSTRY LOGIN
+                CREDENTIALS</div>
+            </div>
+            <div class="form-group">
+              <label for="sUserEmail">Industry User Email</label>
+              <input type="email" id="sUserEmail" placeholder="e.g. industry.plant@ocems.in">
+            </div>
+            <div class="form-group">
+              <label for="sUserPassword">Industry User Password (Declared)</label>
+              <input type="text" id="sUserPassword" placeholder="e.g. IndustryPass2026!">
+            </div>
+          </div>
+          <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:10px">
+            <button type="button" class="btn btn-g" onclick="closeAddSiteModal()">Cancel</button>
+            <button type="submit" class="btn btn-p" id="btnSubmitSite">➕ Add Industry</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auth guard -->
+  <script>
+    (async () => {
+      try {
+        const r = await fetch('http://localhost:3001/api/auth/me', { credentials: 'include' });
+        const j = await r.json();
+        if (!j.success) { window.location.href = 'login.html'; }
+        else {
+          const u = j.data;
+          if (u.role === 'industry') {
+            window.location.href = 'complaints.html';
+            return;
+          }
+          document.title = `OCEMS Dashboard — ${u.name}`;
+          const ROLE_ICONS = { admin: '🛡️', engineer: '🔧', industry: '🏭' };
+          const sbUser = document.getElementById('sbUser');
+          const av = document.getElementById('suAvatar');
+          if (sbUser && av) {
+            av.textContent = ROLE_ICONS[u.role] || '👤';
+            av.className = `su-avatar ${u.role}`;
+            document.getElementById('suName').textContent = u.name;
+            document.getElementById('suRole').textContent = u.role.charAt(0).toUpperCase() + u.role.slice(1);
+            sbUser.style.display = 'flex';
+          }
+        }
+      } catch (_) { /* backend might be starting, don't redirect */ }
+    })();
+    async function doLogout() {
+      try { await fetch('http://localhost:3001/api/auth/logout', { method: 'POST', credentials: 'include' }); } catch (_) { }
+      sessionStorage.removeItem('ocems_user');
+      window.location.href = 'login.html';
+    }
+  </script>
+  <!-- App entry point (ES module) -->
+  <script type="module" src="js/app.js"></script>
+</body>
+
+</html>
