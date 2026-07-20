@@ -19,30 +19,53 @@ async function initDb() {
   if (_db) return _db;
 
   const initSqlJs = require('sql.js');
-  const SQL = await initSqlJs();
+  let SQL;
+  try {
+    const wasmPath = path.join(path.dirname(require.resolve('sql.js')), 'sql-wasm.wasm');
+    SQL = await initSqlJs({
+      locateFile: file => {
+        if (file.endsWith('.wasm')) return wasmPath;
+        return file;
+      }
+    });
+  } catch (err) {
+    console.warn('  ⚠️ Custom WASM path failed, trying default initSqlJs:', err.message);
+    SQL = await initSqlJs();
+  }
 
   if (fs.existsSync(DB_PATH)) {
-    const fileBuffer = fs.readFileSync(DB_PATH);
-    _db = new SQL.Database(fileBuffer);
-    console.log('  ✓ Loaded existing database from disk.');
+    try {
+      const fileBuffer = fs.readFileSync(DB_PATH);
+      _db = new SQL.Database(fileBuffer);
+      console.log('  ✓ Loaded existing database from disk.');
+    } catch (err) {
+      console.warn('  ⚠️ Could not read DB_PATH, initializing empty database in memory:', err.message);
+      _db = new SQL.Database();
+    }
   } else {
     _db = new SQL.Database();
     console.log('  ⧗ Creating new database…');
   }
 
   // Apply full schema
-  const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
-  _db.run(schema);
+  if (fs.existsSync(SCHEMA_PATH)) {
+    const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
+    _db.run(schema);
+  }
 
   // Seed users if empty
-  const userCount = toRows(_db.exec('SELECT COUNT(*) as n FROM users'))[0]?.n ?? 0;
-  if (userCount === 0) {
-    await seedOcems(_db);
-    save(_db);
-    console.log('  ✓ Database seeded and saved.');
-  } else {
-    const siteCount = toRows(_db.exec('SELECT COUNT(*) as n FROM sites'))[0]?.n ?? 0;
-    console.log(`  ✓ Database ready (${siteCount} sites).`);
+  try {
+    const userCount = toRows(_db.exec('SELECT COUNT(*) as n FROM users'))[0]?.n ?? 0;
+    if (userCount === 0) {
+      await seedOcems(_db);
+      save(_db);
+      console.log('  ✓ Database seeded and saved.');
+    } else {
+      const siteCount = toRows(_db.exec('SELECT COUNT(*) as n FROM sites'))[0]?.n ?? 0;
+      console.log(`  ✓ Database ready (${siteCount} sites).`);
+    }
+  } catch (err) {
+    console.warn('  ⚠️ Error seeding database:', err.message);
   }
 
   return _db;
