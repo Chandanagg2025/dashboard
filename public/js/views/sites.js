@@ -1,5 +1,5 @@
 /**
- * sites.js — All Sites table view
+ * sites.js — All Sites table view with Add Industry & Clear All Industries controls
  */
 import { mk, SIG_LBL, RANK } from '../utils.js';
 import { fetchSites } from '../api.js';
@@ -24,6 +24,13 @@ export async function vSites() {
     addBtn.innerHTML = '➕ Add Industry';
     addBtn.onclick = () => window.openAddSiteModal();
     row.append(addBtn);
+
+    const clearBtn = mk('button', 'btn btn-danger btn-sm');
+    clearBtn.innerHTML = '🗑️ Clear All Industries';
+    clearBtn.onclick = () => {
+      if (window.clearAllSitesFn) window.clearAllSitesFn();
+    };
+    row.append(clearBtn);
   }
 
   ph.append(row); panel.append(ph);
@@ -43,7 +50,16 @@ export async function vSites() {
       tb.innerHTML = '';
       let list = sites.filter(s => !q || (s.name+s.id+s.sector+s.city).toLowerCase().includes(q.toLowerCase()));
       list.sort((a,b) => (RANK[b.sig]||0)-(RANK[a.sig]||0));
-      if (!list.length) { tb.innerHTML = `<tr><td colspan="${colCount}"><div class="empty">No site matches.</div></td></tr>`; return; }
+      if (!list.length) {
+        tb.innerHTML = `<tr><td colspan="${colCount}">
+          <div class="empty" style="padding:32px 16px;text-align:center">
+            <div style="font-size:24px;margin-bottom:8px">🏭</div>
+            <div style="font-weight:700;color:var(--text-1);margin-bottom:4px">No Industries Registered Yet</div>
+            <div style="font-size:12px;color:var(--text-3)">Click <b>"+ Add Industry"</b> above to register your first industrial plant.</div>
+          </div>
+        </td></tr>`;
+        return;
+      }
       list.forEach(s => {
         const tr = mk('tr');
         tr.onclick = () => navigate('detail', s);
@@ -75,7 +91,7 @@ export async function vSites() {
     inp.addEventListener('input', () => { setState({ Q: inp.value }); fill(inp.value); });
 
   } catch(err) {
-    tb.innerHTML = `<tr><td colspan="8"><div class="error-box">⚠️ ${err.message}</div></td></tr>`;
+    tb.innerHTML = `<tr><td colspan="${colCount}"><div class="error-box">⚠️ ${err.message}</div></td></tr>`;
   }
 
   return panel;

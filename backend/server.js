@@ -41,6 +41,10 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
 
+const pathLib = require('path');
+app.use(express.static(pathLib.join(__dirname, '..', 'public')));
+
+
 /* ── DB reference ───────────────────────────────────────────────────────── */
 let db = null;
 
@@ -278,6 +282,26 @@ app.post('/api/sites', requireAuth(['admin']), async (req, res) => {
 
     const created = q('SELECT * FROM sites WHERE id = ?', [id])[0];
     res.json({ success: true, data: attachParams(created) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/sites — Clear all Industries / Sites (Admin Only)
+app.delete('/api/sites', requireAuth(['admin']), (req, res) => {
+  try {
+    run('DELETE FROM params');
+    run('DELETE FROM alerts');
+    run('DELETE FROM complaints');
+    run('DELETE FROM complaint_updates');
+    run('DELETE FROM service_reports');
+    run('DELETE FROM sites');
+    run("DELETE FROM users WHERE role = 'industry'");
+
+    save(db);
+
+    res.json({ success: true, data: { message: 'All industries removed successfully.' } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: err.message });
@@ -598,6 +622,200 @@ app.get('/api/reports/:complaintId/pdf', requireAuth(), (req, res) => {
   } catch (err) {
     console.error(err);
     if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/* ══════════════════════════ SALES & PAYMENTS ROUTES ═══════════════════════════ */
+
+// GET /api/sales — Get all analyzers & transactions (Admin/Engineer only)
+app.get('/api/sales', requireAuth(['admin', 'engineer']), (req, res) => {
+  try {
+    const analyzers = q(`
+      SELECT a.*, s.name AS site_name 
+      FROM analyzers a 
+      JOIN sites s ON a.site_id = s.id 
+      ORDER BY s.name ASC, a.name ASC
+    `);
+    const transactions = q(`
+      SELECT t.*, s.name AS site_name, a.name AS analyzer_name 
+      FROM transactions t 
+      JOIN sites s ON t.site_id = s.id 
+      LEFT JOIN analyzers a ON t.analyzer_id = a.id 
+      ORDER BY t.payment_date DESC, t.id DESC
+    `);
+    res.json({ success: true, data: { analyzers, transactions } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/sales/my — Get logged-in client's site analyzers & transactions (Industry only)
+app.get('/api/sales/my', requireAuth(['industry']), (req, res) => {
+  try {
+    const siteId = req.user.site_id;
+    if (!siteId) {
+      return res.status(400).json({ success: false, error: 'User is not associated with any site' });
+    }
+    const analyzers = q(`
+      SELECT a.*, s.name AS site_name 
+      FROM analyzers a 
+      JOIN sites s ON a.site_id = s.id 
+      WHERE a.site_id = ? 
+      ORDER BY a.name ASC
+    `, [siteId]);
+    const transactions = q(`
+      SELECT t.*, s.name AS site_name, a.name AS analyzer_name 
+      FROM transactions t 
+      JOIN sites s ON t.site_id = s.id 
+      LEFT JOIN analyzers a ON t.analyzer_id = a.id 
+      WHERE t.site_id = ? 
+      ORDER BY t.payment_date DESC, t.id DESC
+    `, [siteId]);
+    res.json({ success: true, data: { analyzers, transactions } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/sales/analyzers — Add new analyzer contract (Admin only)
+app.post('/api/sales/analyzers', requireAuth(['admin']), (req, res) => {
+  try {
+    const { site_id, name, amc_amount = 0, cmc_amount = 0, balance_amount = 0, payment_status = 'Pending', contract_start = '', contract_end = '' } = req.body;
+    if (!site_id || !name) {
+      return res.status(400).json({ success: false, error: 'site_id and name required' });
+    }
+    const amcVal = parseFloat(amc_amount);
+    const cmcVal = parseFloat(cmc_amount);
+    const balVal = parseFloat(balance_amount);
+
+    run(`
+      INSERT INTO analyzers (site_id, name, amc_amount, cmc_amount, balance_amount, payment_status, contract_start, contract_end)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [site_id, name, amcVal, cmcVal, balVal, payment_status, contract_start, contract_end]);
+    
+    save(db);
+    res.json({ success: true, data: { message: 'Analyzer contract added successfully' } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT /api/sales/analyzers/:id — Update analyzer contract (Admin only)
+app.put('/api/sales/analyzers/:id', requireAuth(['admin']), (req, res) => {
+  try {
+    const aid = req.params.id;
+    const { name, amc_amount = 0, cmc_amount = 0, balance_amount = 0, payment_status = 'Pending', contract_start = '', contract_end = '' } = req.body;
+    if (!name) {
+      return res.status(400).json({ success: false, error: 'name required' });
+    }
+    const amcVal = parseFloat(amc_amount);
+    const cmcVal = parseFloat(cmc_amount);
+    const balVal = parseFloat(balance_amount);
+
+    const exists = q('SELECT id FROM analyzers WHERE id = ?', [aid])[0];
+    if (!exists) {
+      return res.status(404).json({ success: false, error: 'Analyzer contract not found' });
+    }
+
+    run(`
+      UPDATE analyzers 
+      SET name = ?, amc_amount = ?, cmc_amount = ?, balance_amount = ?, payment_status = ?, contract_start = ?, contract_end = ?
+      WHERE id = ?
+    `, [name, amcVal, cmcVal, balVal, payment_status, contract_start, contract_end, aid]);
+
+    save(db);
+    res.json({ success: true, data: { message: 'Analyzer contract updated successfully' } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/sales/analyzers/:id — Delete analyzer contract (Admin only)
+app.delete('/api/sales/analyzers/:id', requireAuth(['admin']), (req, res) => {
+  try {
+    const aid = req.params.id;
+    const exists = q('SELECT id FROM analyzers WHERE id = ?', [aid])[0];
+    if (!exists) {
+      return res.status(404).json({ success: false, error: 'Analyzer contract not found' });
+    }
+    run('DELETE FROM analyzers WHERE id = ?', [aid]);
+    save(db);
+    res.json({ success: true, data: { message: 'Analyzer contract deleted successfully' } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/sales/transactions — Record payment transaction (Admin only)
+app.post('/api/sales/transactions', requireAuth(['admin']), (req, res) => {
+  try {
+    const { site_id, analyzer_id, amount, payment_date = '', payment_method = 'Bank Transfer', reference_no = '', remarks = '' } = req.body;
+    if (!site_id || amount === undefined || amount === null || amount === '') {
+      return res.status(400).json({ success: false, error: 'site_id and amount required' });
+    }
+    const amtVal = parseFloat(amount);
+    const aidVal = analyzer_id ? parseInt(analyzer_id, 10) : null;
+
+    run(`
+      INSERT INTO transactions (site_id, analyzer_id, amount, payment_date, payment_method, reference_no, remarks)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [site_id, aidVal, amtVal, payment_date, payment_method, reference_no, remarks]);
+
+    // Recalculate balance for the analyzer if analyzer_id is provided
+    if (aidVal) {
+      const analyzer = q('SELECT amc_amount, cmc_amount FROM analyzers WHERE id = ?', [aidVal])[0];
+      if (analyzer) {
+        const totalContract = (analyzer.amc_amount || 0) + (analyzer.cmc_amount || 0);
+        const payments = q('SELECT SUM(amount) AS paid FROM transactions WHERE analyzer_id = ?', [aidVal])[0]?.paid || 0;
+        const newBalance = Math.max(0, totalContract - payments);
+        let status = 'Pending';
+        if (newBalance === 0) status = 'Paid';
+        else if (payments > 0) status = 'Partially Paid';
+        else status = 'Pending';
+
+        run('UPDATE analyzers SET balance_amount = ?, payment_status = ? WHERE id = ?', [newBalance, status, aidVal]);
+      }
+    }
+
+    save(db);
+    res.json({ success: true, data: { message: 'Transaction recorded successfully' } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/sales/transactions/:id — Delete payment transaction (Admin only)
+app.delete('/api/sales/transactions/:id', requireAuth(['admin']), (req, res) => {
+  try {
+    const tid = req.params.id;
+    const txn = q('SELECT id, analyzer_id FROM transactions WHERE id = ?', [tid])[0];
+    if (!txn) {
+      return res.status(404).json({ success: false, error: 'Transaction not found' });
+    }
+
+    run('DELETE FROM transactions WHERE id = ?', [tid]);
+
+    // Recalculate balance for the analyzer if analyzer_id was referenced
+    if (txn.analyzer_id) {
+      const aidVal = txn.analyzer_id;
+      const analyzer = q('SELECT amc_amount, cmc_amount FROM analyzers WHERE id = ?', [aidVal])[0];
+      if (analyzer) {
+        const totalContract = (analyzer.amc_amount || 0) + (analyzer.cmc_amount || 0);
+        const payments = q('SELECT SUM(amount) AS paid FROM transactions WHERE analyzer_id = ?', [aidVal])[0]?.paid || 0;
+        const newBalance = Math.max(0, totalContract - payments);
+        let status = 'Pending';
+        if (newBalance === 0) status = 'Paid';
+        else if (payments > 0) status = 'Partially Paid';
+        else status = 'Pending';
+
+        run('UPDATE analyzers SET balance_amount = ?, payment_status = ? WHERE id = ?', [newBalance, status, aidVal]);
+      }
+    }
+
+    save(db);
+    res.json({ success: true, data: { message: 'Transaction deleted successfully' } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

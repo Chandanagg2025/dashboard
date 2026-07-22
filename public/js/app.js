@@ -14,6 +14,7 @@ import { vTrends }      from './views/trends.js';
 import { vReports }     from './views/reports.js';
 import { vAddIndustry }    from './views/addIndustry.js';
 import { vSensorChannels } from './views/sensorChannels.js';
+import { vSales }          from './views/sales.js';
 
 let storedUser = null;
 try { storedUser = JSON.parse(sessionStorage.getItem('ocems_user')); } catch (_) {}
@@ -30,9 +31,62 @@ export function getState()          { return { ...state }; }
 export function setState(partial)   { Object.assign(state, partial); }
 
 /* ── Add / Delete Industry Modal Handlers ─────────────────────────────── */
+export function initModalParamRows() {
+  const mRowsWrap = document.getElementById('mParamRows');
+  if (!mRowsWrap) return;
+
+  function addMParamRow(p = {}) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 1.4fr 0.7fr 0.7fr 0.7fr 0.7fr 28px;gap:6px;align-items:center';
+
+    row.innerHTML = `
+      <input type="text" class="mp-key" placeholder="e.g. pH" value="${p.key || ''}" style="width:100%;min-width:0;box-sizing:border-box;padding:4px 6px;font-size:11px">
+      <input type="text" class="mp-id" placeholder="Device Param ID" value="${p.param_id || ''}" style="width:100%;min-width:0;box-sizing:border-box;padding:4px 6px;font-size:10.5px;font-family:var(--mono);color:var(--cyan-l);border-color:rgba(6,182,212,.3)">
+      <input type="text" class="mp-unit" placeholder="Unit" value="${p.unit || ''}" style="width:100%;min-width:0;box-sizing:border-box;padding:4px 6px;font-size:11px">
+      <input type="number" step="0.1" class="mp-val" placeholder="Val" value="${p.value !== null && p.value !== undefined ? p.value : ''}" style="width:100%;min-width:0;box-sizing:border-box;padding:4px 4px;font-size:11px;font-family:var(--mono)">
+      <input type="number" step="0.1" class="mp-lim" placeholder="Limit" value="${p.limit ?? 100}" style="width:100%;min-width:0;box-sizing:border-box;padding:4px 4px;font-size:11px;font-family:var(--mono)">
+      <input type="number" step="0.1" class="mp-warn" placeholder="Warn" value="${p.warn ?? 80}" style="width:100%;min-width:0;box-sizing:border-box;padding:4px 4px;font-size:11px;font-family:var(--mono)">
+      <button type="button" class="btn-del-row" style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:4px;color:#f87171;cursor:pointer;font-size:12px;padding:4px 6px;line-height:1" title="Remove">✕</button>
+    `;
+
+    row.querySelector('.btn-del-row').onclick = () => row.remove();
+    mRowsWrap.append(row);
+  }
+
+  const M_WATER_PRESET = [
+    { key: 'pH',        param_id: 'DEV-WATER-pH-CH1',   unit: '',      limit: 9.5,  warn: 9.0, min: 6.5,  value: 7.4 },
+    { key: 'BOD',       param_id: 'DEV-WATER-BOD-CH2',  unit: 'mg/L',  limit: 30,   warn: 24,  min: null, value: 18.5 },
+    { key: 'COD',       param_id: 'DEV-WATER-COD-CH3',  unit: 'mg/L',  limit: 250,  warn: 200, min: null, value: 110.0 },
+    { key: 'TSS',       param_id: 'DEV-WATER-TSS-CH4',  unit: 'mg/L',  limit: 100,  warn: 80,  min: null, value: 42.0 },
+  ];
+
+  const M_STACK_PRESET = [
+    { key: 'PM₁₀', param_id: 'DEV-STACK-PM10-CH1', unit: 'mg/Nm³', limit: 150, warn: 120, min: null, value: 68.0 },
+    { key: 'SO₂',   param_id: 'DEV-STACK-SO2-CH2',  unit: 'mg/Nm³', limit: 200, warn: 160, min: null, value: 92.0 },
+    { key: 'NOₓ',   param_id: 'DEV-STACK-NOX-CH3',  unit: 'mg/Nm³', limit: 250, warn: 200, min: null, value: 115.0 },
+    { key: 'CO',    param_id: 'DEV-STACK-CO-CH4',   unit: 'mg/Nm³', limit: 500, warn: 400, min: null, value: 140.0 },
+  ];
+
+  function loadMPreset(preset) {
+    mRowsWrap.innerHTML = '';
+    preset.forEach(p => addMParamRow(p));
+  }
+
+  loadMPreset(M_WATER_PRESET);
+
+  const btnWater = document.getElementById('mBtnPresetWater');
+  const btnStack = document.getElementById('mBtnPresetStack');
+  const btnAdd   = document.getElementById('mBtnAddRow');
+
+  if (btnWater) btnWater.onclick = () => loadMPreset(M_WATER_PRESET);
+  if (btnStack) btnStack.onclick = () => loadMPreset(M_STACK_PRESET);
+  if (btnAdd)   btnAdd.onclick   = () => addMParamRow();
+}
+
 export function openAddSiteModal() {
   navigate('add-industry');
 }
+
 export function closeAddSiteModal() {
   const modal = document.getElementById('addSiteModal');
   if (modal) modal.classList.remove('show');
@@ -45,6 +99,25 @@ export async function submitAddSite(e) {
   btn.textContent = 'Adding…';
 
   try {
+    const mRowsWrap = document.getElementById('mParamRows');
+    const params = [];
+
+    if (mRowsWrap) {
+      mRowsWrap.querySelectorAll('div').forEach(r => {
+        const key = r.querySelector('.mp-key')?.value?.trim();
+        if (!key) return;
+        const valStr = r.querySelector('.mp-val')?.value;
+        params.push({
+          key,
+          param_id:  r.querySelector('.mp-id')?.value?.trim() || '',
+          unit:      r.querySelector('.mp-unit')?.value?.trim() || '',
+          value:     (valStr !== undefined && valStr !== '') ? parseFloat(valStr) : null,
+          limit_val: parseFloat(r.querySelector('.mp-lim')?.value || '100'),
+          warn_val:  parseFloat(r.querySelector('.mp-warn')?.value || '80'),
+        });
+      });
+    }
+
     const data = {
       name:          document.getElementById('sName').value.trim(),
       sector:        document.getElementById('sSector').value,
@@ -59,12 +132,13 @@ export async function submitAddSite(e) {
       lng:           parseFloat(document.getElementById('sLng').value || '72.877'),
       user_email:    document.getElementById('sUserEmail')?.value?.trim() || '',
       user_password: document.getElementById('sUserPassword')?.value?.trim() || '',
+      params,
     };
 
     const newSite = await createSite(data);
     closeAddSiteModal();
     document.getElementById('addSiteForm').reset();
-    toast('✅ Industry Added', `${newSite.name} (${newSite.id}) has been added successfully.`, 'success');
+    toast('✅ Industry Added', `${newSite.name} (${newSite.id}) created with ${params.length} Device Parameter IDs.`, 'success');
     navigate('sites');
   } catch (err) {
     toast('⚠️ Error', err.message, 'error');
@@ -87,10 +161,25 @@ export async function deleteSiteFn(siteId, siteName) {
   }
 }
 
+export async function clearAllSitesFn() {
+  if (!confirm('Are you sure you want to remove ALL industries from your Vercel platform?\n\nThis action will delete all registered plants, sensor parameters, telemetry history, and alerts.')) {
+    return;
+  }
+  try {
+    const { clearAllSites } = await import('./api.js');
+    await clearAllSites();
+    toast('🗑️ Industries Cleared', 'All industries have been removed from the platform.', 'success');
+    navigate('sites');
+  } catch (err) {
+    toast('⚠️ Error', err.message, 'error');
+  }
+}
+
 window.openAddSiteModal  = openAddSiteModal;
 window.closeAddSiteModal = closeAddSiteModal;
 window.submitAddSite     = submitAddSite;
 window.deleteSiteFn      = deleteSiteFn;
+window.clearAllSitesFn   = clearAllSitesFn;
 window.openSb  = openSb;
 window.closeSb = closeSb;
 window.toggleTheme = () => document.body.classList.toggle('lm');
@@ -104,6 +193,7 @@ const NAV = [
   { v:'sensors',      ic:'🧪', l:'Sensor Channels' },
   { v:'map',          ic:'🗺️', l:'Map View'       },
   { v:'alerts',       ic:'🔔', l:'Alert Log'       },
+  { v:'sales',        ic:'💰', l:'Sales & Payments' },
   { sep:'Analysis' },
   { v:'trends',       ic:'📈', l:'Trend Analysis'  },
   { v:'reports',      ic:'📥', l:'Reports'         },
@@ -116,6 +206,7 @@ const TITLES = {
   sensors:        ['Sensor Channels', 'Hardware channel mappings & thresholds'],
   map:            ['Map View',        'Geographic status overview'],
   alerts:         ['Alert Log',       'CPCB automated grading'],
+  sales:          ['Sales & Payments', 'Client contracts, AMC/CMC balances & collections'],
   detail:         ['Site Detail',     ''],
   trends:         ['Trend Analysis',  'Historical parameter trends'],
   reports:        ['Reports',         'Generate & download data'],
@@ -179,7 +270,7 @@ async function render() {
   const content = document.getElementById('content');
   content.innerHTML = '';
 
-  const views = { home:vHome, sites:vSites, 'add-industry':vAddIndustry, sensors:vSensorChannels, map:vMap, alerts:vAlerts, detail:vDetail, trends:vTrends, reports:vReports };
+  const views = { home:vHome, sites:vSites, 'add-industry':vAddIndustry, sensors:vSensorChannels, map:vMap, alerts:vAlerts, detail:vDetail, trends:vTrends, reports:vReports, sales:vSales };
   const fn    = views[state.VIEW];
   if (!fn) return;
 
@@ -232,6 +323,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   buildNav();
   render();
+  initModalParamRows();
   tickClock();
   setInterval(tickClock, 1000);
 

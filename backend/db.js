@@ -9,7 +9,9 @@ const path   = require('path');
 const fs     = require('fs');
 const bcrypt = require('bcryptjs');
 
-const DB_PATH     = path.join(__dirname, '..', 'database', 'ocems.db');
+const IS_VERCEL = !!process.env.VERCEL;
+const ORIGINAL_DB_PATH = path.join(__dirname, '..', 'database', 'ocems.db');
+const DB_PATH     = IS_VERCEL ? '/tmp/ocems.db' : ORIGINAL_DB_PATH;
 const SCHEMA_PATH = path.join(__dirname, '..', 'database', 'schema.sql');
 
 let _db = null;
@@ -17,6 +19,19 @@ let _db = null;
 /* ─────────────────────────── INIT ─────────────────────────────────────── */
 async function initDb() {
   if (_db) return _db;
+
+  if (IS_VERCEL && !fs.existsSync('/tmp/ocems.db')) {
+    try {
+      if (fs.existsSync(ORIGINAL_DB_PATH)) {
+        fs.copyFileSync(ORIGINAL_DB_PATH, '/tmp/ocems.db');
+        console.log('  ✓ Copied read-only database to /tmp/ocems.db for writing.');
+      } else {
+        console.warn('  ⚠️ Original DB not found at:', ORIGINAL_DB_PATH);
+      }
+    } catch (err) {
+      console.error('  ⚠️ Error copying DB to /tmp:', err.message);
+    }
+  }
 
   const initSqlJs = require('sql.js');
   let SQL;
@@ -55,13 +70,12 @@ async function initDb() {
 
   // Seed users if empty
   try {
-    const userCount = toRows(_db.exec('SELECT COUNT(*) as n FROM users'))[0]?.n ?? 0;
-    if (userCount === 0) {
-      await seedOcems(_db);
+    const siteCount = toRows(_db.exec('SELECT COUNT(*) as n FROM sites'))[0]?.n ?? 0;
+    if (siteCount === 0) {
+      await seedDemoData(_db);
       save(_db);
-      console.log('  ✓ Database seeded and saved.');
+      console.log('  ✓ Database seeded with demo sites and contract billing data.');
     } else {
-      const siteCount = toRows(_db.exec('SELECT COUNT(*) as n FROM sites'))[0]?.n ?? 0;
       console.log(`  ✓ Database ready (${siteCount} sites).`);
     }
   } catch (err) {
@@ -133,60 +147,9 @@ function siteSig(params) {
 }
 
 async function seedOcems(db) {
-  // 1. Seed 12 OCEMS sites + params + alerts
-  for(let i=0;i<12;i++) {
-    const loc    = LOCS[i%LOCS.length];
-    const sector = SECTORS[i%SECTORS.length];
-    const isStack= ['Cement','Thermal Power','Steel','Chemical','Fertilizer'].includes(sector);
-    const pdefs  = (isStack?STACK_P:ETP_P).slice(0,Math.floor(rnd(3,6)));
-    const tgt    = i<5?'green':i<8?'yellow':i<10?'red':i===10?'grey':'red';
-    const id     = `OCEMS-${String(i+1).padStart(3,'0')}`;
-    const name   = `${loc.city} ${sector} Works`;
-    const lat    = +(loc.lat+rnd(-.18,.18,3)).toFixed(4);
-    const lng    = +(loc.lng+rnd(-.18,.18,3)).toFixed(4);
-    const stacks = Math.floor(rnd(1,4));
-    const etp    = Math.floor(rnd(0,2));
-    const cat    = isStack?'Stack':'ETP';
-    const phone  = '+91-9'+String(Math.floor(Math.random()*1e9)).padStart(9,'0');
-    const spcb   = SPCB[i%SPCB.length];
-
-    if(tgt==='grey') {
-      db.run(`INSERT INTO sites VALUES (?,?,?,?,?,?,?,?,'grey','Offline · 15m ago',?,?,?,?)`,
-        [id,name,sector,loc.city,loc.state,spcb,lat,lng,stacks,etp,cat,phone]);
-      continue;
-    }
-    const params = pdefs.map((pd, pidx) => {
-      let v;
-      if(tgt==='red')         v = rnd(pd.limit*1.06, pd.limit*1.45);
-      else if(tgt==='yellow') v = rnd(pd.warn+1, pd.limit);
-      else                    v = rnd(pd.limit*.25, pd.warn*.82);
-      if(pd.min!=null) v = +Math.min(pd.limit*1.1, Math.max(pd.min, v)).toFixed(1);
-      const cleanKey = pd.key.replace(/[^\w]/g, '');
-      const param_id = `${id}-${cleanKey}-CH${pidx+1}`;
-      return { ...pd, param_id, value:v, sig:pSig(pd,v), history:hist(v) };
-    });
-    const sig       = siteSig(params);
-    const last_data = `${Math.floor(rnd(1,15))} min ago`;
-    db.run(`INSERT INTO sites VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [id,name,sector,loc.city,loc.state,spcb,lat,lng,sig,last_data,stacks,etp,cat,phone]);
-    for(const p of params) {
-      db.run(`INSERT INTO params (site_id,param_id,key,unit,value,limit_val,warn_val,min_val,sig,history_json,y_today,y30,conn_hrs,st_hrs) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id,p.param_id,p.key,p.unit,p.value,p.limit,p.warn,p.min??null,p.sig,JSON.stringify(p.history),
-         Math.floor(rnd(0,5)),Math.floor(rnd(0,12)),rnd(0,1.5),rnd(0,1.0)]);
-      if(p.sig!=='green') {
-        const aid = Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2);
-        db.run(`INSERT INTO alerts (id,site_id,site_name,param,value,unit,limit_val,sig,msg,triggered_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-          [aid,id,name,p.key,p.value,p.unit,p.limit,p.sig,
-           `${p.key} (${p.param_id}) at ${p.value}${p.unit} — limit ${p.limit}${p.unit}`,
-           Date.now()-Math.floor(Math.random()*86400000)]);
-      }
-    }
-  }
-
-  // 2. Seed demo users
+  // Seed system users (Admin & Engineers) only
   const adminHash = await bcrypt.hash('demo1234', 10);
   const engHash   = await bcrypt.hash('demo1234', 10);
-  const indHash   = await bcrypt.hash('demo1234', 10);
   const eng2Hash  = await bcrypt.hash('demo1234', 10);
 
   db.run(`INSERT INTO users (name,email,password_hash,role,site_id,phone) VALUES (?,?,?,?,?,?)`,
@@ -194,54 +157,93 @@ async function seedOcems(db) {
   db.run(`INSERT INTO users (name,email,password_hash,role,site_id,phone) VALUES (?,?,?,?,?,?)`,
     ['Raj Kumar','engineer@ocems.in',engHash,'engineer',null,'+91-9000000002']);
   db.run(`INSERT INTO users (name,email,password_hash,role,site_id,phone) VALUES (?,?,?,?,?,?)`,
-    ['Pune Cement Manager','industry@ocems.in',indHash,'industry','OCEMS-001','+91-9000000003']);
-  db.run(`INSERT INTO users (name,email,password_hash,role,site_id,phone) VALUES (?,?,?,?,?,?)`,
     ['Suresh Patel','engineer2@ocems.in',eng2Hash,'engineer',null,'+91-9000000004']);
 
-  // 3. Seed sample complaints
-  const now = Date.now();
-  // Complaint 1: Resolved — has service report
-  db.run(`INSERT INTO complaints (site_id,raised_by,title,description,priority,status,assigned_to,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)`,
-    ['OCEMS-001',3,'CEMS Sensor Malfunction - PM10 Reading Erratic',
-     'The PM10 sensor has been showing erratic readings for the past 3 days. Values are jumping between 50 and 300 mg/Nm³ without any process change. We suspect a sensor calibration issue or cable fault.',
-     'high','resolved',2,now-7*86400000,now-2*86400000]);
-  db.run(`INSERT INTO complaint_updates (complaint_id,author_id,message,created_at) VALUES (?,?,?,?)`,
-    [1,3,'Complaint raised. Sensor readings are unreliable.',now-7*86400000]);
-  db.run(`INSERT INTO complaint_updates (complaint_id,author_id,message,created_at) VALUES (?,?,?,?)`,
-    [1,1,'Assigned to engineer Raj Kumar for site visit.',now-6*86400000]);
-  db.run(`INSERT INTO complaint_updates (complaint_id,author_id,message,created_at) VALUES (?,?,?,?)`,
-    [1,2,'Visited the site. Found loose signal cable on PM10 probe. Reseated connector and performed recalibration.',now-2*86400000]);
-  db.run(`INSERT INTO service_reports (complaint_id,engineer_id,visit_date,arrival_time,departure_time,problem_found,action_taken,parts_replaced,recommendations,next_visit_date,client_name,client_designation,engineer_remarks,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [1,2,'2026-07-18','10:00','14:30',
-     'Loose signal cable connection on PM10 probe (Channel A). Connector was partially unseated causing intermittent signal drop and erratic readings.',
-     '1. Reseated and secured the signal cable connector on PM10 probe.\n2. Performed full 3-point calibration of PM10 sensor using certified reference gas.\n3. Verified readings against reference instrument for 30 minutes — readings stable within ±2%.',
-     'None — cable connection issue only',
-     'Schedule quarterly cable inspection. Consider replacing the connector housing at next preventive maintenance.',
-     '2026-10-18','Ramesh Gupta','Plant Manager',
-     'System is now stable. Readings were within spec for 4 hours before departure.',
-     'submitted',now-2*86400000,now-2*86400000]);
+  console.log('  ✓ Seeded system admin & engineer users.');
+}
 
-  // Complaint 2: In Progress
-  db.run(`INSERT INTO complaints (site_id,raised_by,title,description,priority,status,assigned_to,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)`,
-    ['OCEMS-001',3,'Data Logger Not Transmitting to CPCB Server',
-     'Since yesterday evening, our data logger has stopped transmitting data to the CPCB central server. The local display is working but online portal shows no data received for last 18 hours.',
-     'critical','in_progress',2,now-1*86400000,now-3600000]);
-  db.run(`INSERT INTO complaint_updates (complaint_id,author_id,message,created_at) VALUES (?,?,?,?)`,
-    [2,3,'No data on CPCB portal. Compliance at risk.',now-86400000]);
-  db.run(`INSERT INTO complaint_updates (complaint_id,author_id,message,created_at) VALUES (?,?,?,?)`,
-    [2,1,'Critical issue — assigned to Raj Kumar on priority.',now-82800000]);
-  db.run(`INSERT INTO complaint_updates (complaint_id,author_id,message,created_at) VALUES (?,?,?,?)`,
-    [2,2,'Checked remotely. IP configuration seems wrong after last power outage. Will visit tomorrow morning.',now-3600000]);
+async function seedDemoData(db) {
+  const hash = await bcrypt.hash('demo1234', 10);
 
-  // Complaint 3: Open (unassigned)
-  db.run(`INSERT INTO complaints (site_id,raised_by,title,description,priority,status,assigned_to,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)`,
-    ['OCEMS-001',3,'SO2 Analyzer Span Calibration Drift',
-     'Our SO2 analyzer is reading 15% lower than expected based on our process inputs. We believe the span calibration may have drifted. Requesting a calibration check.',
-     'medium','open',null,now-3600000,now-3600000]);
-  db.run(`INSERT INTO complaint_updates (complaint_id,author_id,message,created_at) VALUES (?,?,?,?)`,
-    [3,3,'Noticed SO2 readings lower than expected.',now-3600000]);
+  // 1. Seed Sites
+  db.run(`INSERT INTO sites (id, name, sector, city, state, spcb, lat, lng, sig, last_data, stacks, etp, cat, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ['OCEMS-001', 'Pune Cement Works', 'Cement', 'Pune', 'Maharashtra', 'MPCB', 18.52, 73.86, 'green', 'Live · Just now', 2, 0, 'Stack', '+91-9876543210']);
+  db.run(`INSERT INTO sites (id, name, sector, city, state, spcb, lat, lng, sig, last_data, stacks, etp, cat, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ['OCEMS-002', 'Vadodara Chemicals', 'Chemical', 'Vadodara', 'Gujarat', 'GPCB', 22.31, 73.18, 'yellow', 'Live · Just now', 0, 1, 'ETP', '+91-9876543211']);
+  db.run(`INSERT INTO sites (id, name, sector, city, state, spcb, lat, lng, sig, last_data, stacks, etp, cat, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ['OCEMS-003', 'Kanpur Steel Plant', 'Steel', 'Kanpur', 'Uttar Pradesh', 'UPPCB', 26.45, 80.33, 'red', 'Live · Just now', 1, 0, 'Stack', '+91-9876543212']);
 
-  console.log('  ✓ Seeded 4 users, 3 sample complaints, 1 service report.');
+  // 2. Seed Users
+  db.run(`INSERT INTO users (name, email, password_hash, role, site_id, phone) VALUES (?, ?, ?, 'industry', ?, ?)`,
+    ['Pune Manager', 'industry@ocems.in', hash, 'OCEMS-001', '+91-9876543210']);
+  db.run(`INSERT INTO users (name, email, password_hash, role, site_id, phone) VALUES (?, ?, ?, 'industry', ?, ?)`,
+    ['Vadodara Manager', 'vadodara@ocems.in', hash, 'OCEMS-002', '+91-9876543211']);
+  db.run(`INSERT INTO users (name, email, password_hash, role, site_id, phone) VALUES (?, ?, ?, 'industry', ?, ?)`,
+    ['Kanpur Manager', 'kanpur@ocems.in', hash, 'OCEMS-003', '+91-9876543212']);
+
+  // Helper function to insert parameters
+  const addParam = (siteId, key, channel, unit, limit, warn, min, val) => {
+    const history = val !== null ? [val] : [];
+    let sig = 'green';
+    if (val !== null) {
+      if (min !== null && (val < min || val > limit)) sig = 'red';
+      else if (val > limit) sig = 'red';
+      else if (val > warn) sig = 'yellow';
+    }
+    db.run(`INSERT INTO params (site_id, param_id, key, unit, value, limit_val, warn_val, min_val, sig, history_json, y_today, y30, conn_hrs, st_hrs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0)`,
+      [siteId, `${siteId}-${channel}-CH1`, key, unit, val, limit, warn, min, sig, JSON.stringify(history)]);
+  };
+
+  // 3. Seed Params
+  // OCEMS-001 Stack
+  addParam('OCEMS-001', 'PM₁₀', 'PM10', 'mg/Nm³', 150, 120, null, 68.2);
+  addParam('OCEMS-001', 'SO₂', 'SO2', 'mg/Nm³', 200, 160, null, 92.4);
+  addParam('OCEMS-001', 'NOₓ', 'NOX', 'mg/Nm³', 250, 200, null, 115.6);
+  addParam('OCEMS-001', 'CO', 'CO', 'mg/Nm³', 500, 400, null, 140.1);
+
+  // OCEMS-002 ETP
+  addParam('OCEMS-002', 'pH', 'pH', '', 9.5, 9.0, 6.5, 7.4);
+  addParam('OCEMS-002', 'BOD', 'BOD', 'mg/L', 30, 24, null, 18.5);
+  addParam('OCEMS-002', 'COD', 'COD', 'mg/L', 250, 200, null, 110.0);
+  addParam('OCEMS-002', 'TSS', 'TSS', 'mg/L', 100, 80, null, 42.0);
+
+  // OCEMS-003 Stack
+  addParam('OCEMS-003', 'PM₁₀', 'PM10', 'mg/Nm³', 150, 120, null, 158.4); // red
+  addParam('OCEMS-003', 'SO₂', 'SO2', 'mg/Nm³', 200, 160, null, 172.1);  // yellow
+  addParam('OCEMS-003', 'NOₓ', 'NOX', 'mg/Nm³', 250, 200, null, 122.5);
+
+  // 4. Seed Analyzers (Contracts)
+  db.run(`INSERT INTO analyzers (site_id, name, amc_amount, cmc_amount, balance_amount, payment_status, contract_start, contract_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ['OCEMS-001', 'CEMS Stack Gas Analyzer', 120000, 80000, 40000, 'Partially Paid', '2026-01-01', '2026-12-31']);
+  db.run(`INSERT INTO analyzers (site_id, name, amc_amount, cmc_amount, balance_amount, payment_status, contract_start, contract_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ['OCEMS-001', 'Stack Particulate Matter Monitor', 75000, 35000, 0, 'Paid', '2026-03-01', '2027-02-28']);
+  db.run(`INSERT INTO analyzers (site_id, name, amc_amount, cmc_amount, balance_amount, payment_status, contract_start, contract_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ['OCEMS-002', 'ETP Water Quality Analyzer', 95000, 45000, 0, 'Paid', '2026-02-01', '2027-01-31']);
+  db.run(`INSERT INTO analyzers (site_id, name, amc_amount, cmc_amount, balance_amount, payment_status, contract_start, contract_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ['OCEMS-003', 'Blast Furnace Emission CEMS', 180000, 120000, 180000, 'Pending', '2026-06-01', '2027-05-31']);
+
+  // Get analyzer IDs to reference in transactions
+  const analyzers = toRows(db.exec('SELECT id, name, site_id FROM analyzers'));
+  const getAnalyzerId = (siteId, name) => analyzers.find(a => a.site_id === siteId && a.name === name)?.id || null;
+
+  // 5. Seed Transactions
+  const stackGasId = getAnalyzerId('OCEMS-001', 'CEMS Stack Gas Analyzer');
+  if (stackGasId) {
+    db.run(`INSERT INTO transactions (site_id, analyzer_id, amount, payment_date, payment_method, reference_no, remarks) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ['OCEMS-001', stackGasId, 160000, '2026-02-15', 'Bank Transfer', 'TXN-998811', '80% advance payment']);
+  }
+
+  const particulateId = getAnalyzerId('OCEMS-001', 'Stack Particulate Matter Monitor');
+  if (particulateId) {
+    db.run(`INSERT INTO transactions (site_id, analyzer_id, amount, payment_date, payment_method, reference_no, remarks) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ['OCEMS-001', particulateId, 110000, '2026-04-10', 'UPI', 'TXN-998822', 'Full payment']);
+  }
+
+  const etpAnalyzerId = getAnalyzerId('OCEMS-002', 'ETP Water Quality Analyzer');
+  if (etpAnalyzerId) {
+    db.run(`INSERT INTO transactions (site_id, analyzer_id, amount, payment_date, payment_method, reference_no, remarks) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ['OCEMS-002', etpAnalyzerId, 140000, '2026-03-05', 'Bank Transfer', 'TXN-998833', 'Full payment including taxes']);
+  }
 }
 
 /* ─────────────────────────── QUERY HELPER ───────────────────────────────── */

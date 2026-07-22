@@ -119,3 +119,33 @@ CREATE INDEX IF NOT EXISTS idx_complaints_site ON complaints(site_id);
 CREATE INDEX IF NOT EXISTS idx_complaints_user ON complaints(raised_by);
 CREATE INDEX IF NOT EXISTS idx_complaints_eng  ON complaints(assigned_to);
 CREATE INDEX IF NOT EXISTS idx_updates_comp    ON complaint_updates(complaint_id);
+
+-- ── Analyzers (per site for contract billing) ──────────────
+CREATE TABLE IF NOT EXISTS analyzers (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  site_id        TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  name           TEXT NOT NULL,
+  amc_amount     REAL NOT NULL DEFAULT 0,
+  cmc_amount     REAL NOT NULL DEFAULT 0,
+  balance_amount REAL NOT NULL DEFAULT 0,
+  payment_status TEXT NOT NULL DEFAULT 'Pending' CHECK(payment_status IN ('Paid','Partially Paid','Pending','Overdue')),
+  contract_start TEXT NOT NULL DEFAULT '',
+  contract_end   TEXT NOT NULL DEFAULT ''
+);
+
+-- ── Transactions ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS transactions (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  site_id        TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  analyzer_id    INTEGER REFERENCES analyzers(id) ON DELETE SET NULL,
+  amount         REAL NOT NULL,
+  payment_date   TEXT NOT NULL DEFAULT '',
+  payment_method TEXT NOT NULL DEFAULT 'Bank Transfer',
+  reference_no   TEXT NOT NULL DEFAULT '',
+  remarks        TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_analyzers_site ON analyzers(site_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_site ON transactions(site_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_analyzer ON transactions(analyzer_id);
+

@@ -2,6 +2,7 @@
  * complaints.js — Complaint management SPA controller
  * Handles: auth guard, complaint list/detail, raise form, assign, service report, PDF download
  */
+import { vSales } from './views/sales.js';
 
 const API  = (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') ? '' : 'http://localhost:3001';
 let user   = null;
@@ -58,9 +59,9 @@ window.closeSidebar = () => { document.getElementById('sidebar').classList.remov
 
 /* ─── Navigation ────────────────────────────────────────────────────────── */
 const NAV_ITEMS = {
-  admin:    [{ v:'list', ic:'📋', l:'All Complaints'}, {v:'kpis',ic:'📊',l:'Overview'}],
-  engineer: [{ v:'list', ic:'📋', l:'My Assignments'}, {v:'resolved',ic:'✅',l:'Resolved'}],
-  industry: [{ v:'list', ic:'📋', l:'My Complaints'}, {v:'raise',ic:'➕',l:'Raise Complaint'}],
+  admin:    [{ v:'list', ic:'📋', l:'All Complaints'}, {v:'kpis',ic:'📊',l:'Overview'}, {v:'sales',ic:'💰',l:'Sales & Payments'}],
+  engineer: [{ v:'list', ic:'📋', l:'My Assignments'}, {v:'resolved',ic:'✅',l:'Resolved'}, {v:'sales',ic:'💰',l:'Sales & Payments'}],
+  industry: [{ v:'list', ic:'📋', l:'My Complaints'}, {v:'raise',ic:'➕',l:'Raise Complaint'}, {v:'sales',ic:'💰',l:'Sales & Payments'}],
 };
 
 function buildNav() {
@@ -101,6 +102,15 @@ async function render() {
       await renderKpis(content);
     } else if (view === 'resolved') {
       await renderList(content, true);
+    } else if (view === 'sales') {
+      document.getElementById('tbTitle').textContent = 'Sales & Payments';
+      document.getElementById('tbSub').textContent = user.role === 'industry' ? 'Track your analyzer contracts, balances & payment transactions' : 'Track client contracts, AMC/CMC balances & collections';
+      const el = await vSales();
+      content.innerHTML = '';
+      if (el) {
+        el.classList.add('page-in');
+        content.append(el);
+      }
     } else {
       await renderList(content, false);
     }

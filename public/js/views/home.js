@@ -38,7 +38,7 @@ export async function vHome() {
   wrap.append(cr);
 
   // Map card
-  const mp = mk('div', 'card'); mp.style.marginBottom = '20px';
+  const mp = mk('div', 'card');
   mp.innerHTML = `<div class="card-h"><h3>Site Locations</h3>
     <div class="legend">
       <span><i class="ld" style="background:var(--green)"></i>Compliant</span>
@@ -47,42 +47,6 @@ export async function vHome() {
       <span><i class="ld" style="background:var(--grey)"></i>Offline</span>
     </div></div><div id="siteMap"></div>`;
   wrap.append(mp);
-
-  // Site cards panel
-  const panel = mk('div', 'card');
-  const ph    = mk('div', 'card-h');
-  ph.innerHTML = '<h3>All Sites</h3>';
-  const chips = mk('div', 'chips');
-  let   filter = getState().FILTER || 'all';
-  let   q      = getState().Q || '';
-
-  [['all','All',null],['green','Compliant','#10b981'],['yellow','Warning','#f59e0b'],
-   ['red','Exceedance','#ef4444'],['grey','Offline','#6b7280']].forEach(([f,l,col]) => {
-    const ch = mk('button', 'chip' + (filter === f ? ' on' : ''));
-    ch.innerHTML = (col ? `<span class="cdot" style="background:${col}"></span>` : '') + l;
-    ch.onclick = () => {
-      filter = f; setState({ FILTER: f });
-      chips.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
-      ch.classList.add('on');
-      if (window._homeSites) renderSiteCards(document.getElementById('cgrid'), window._homeSites, filter, q);
-    };
-    chips.append(ch);
-  });
-
-  const sr = mk('input', 'srch');
-  sr.type = 'text'; sr.placeholder = 'Search site, code, sector…'; sr.value = q;
-  sr.oninput = e => {
-    q = e.target.value; setState({ Q: q });
-    if (window._homeSites) renderSiteCards(document.getElementById('cgrid'), window._homeSites, filter, q);
-  };
-  chips.append(sr);
-  ph.append(chips);
-  panel.append(ph);
-
-  const grid = mk('div', 'sg'); grid.id = 'cgrid';
-  grid.innerHTML = '<div class="empty"><div class="ei">⏳</div>Loading sites…</div>';
-  const pb = mk('div', 'card-b'); pb.append(grid);
-  panel.append(pb); wrap.append(panel);
 
   // Fetch data and populate
   try {
@@ -114,7 +78,6 @@ export async function vHome() {
       drawStatus(kpis);
       drawParam(sites);
       initMap(sites);
-      renderSiteCards(grid, sites, filter, q);
     }, 50);
 
   } catch (err) {
